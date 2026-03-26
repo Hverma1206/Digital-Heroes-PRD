@@ -14,10 +14,12 @@ function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
-async function signup(req, res) {333
+async function signup(req, res) {
   try {
-    const { email, password } = req.body;
+    const { email, password, charity_id, charity_percent } = req.body;
     const normalizedEmail = normalizeEmail(email);
+    const adminEmail = normalizeEmail(process.env.ADMIN_EMAIL);
+    const isAdminSignup = adminEmail && normalizedEmail === adminEmail;
 
     if (!email || !password) {
       return res.status(400).json({ message: "Email and password are required" });
@@ -33,6 +35,35 @@ async function signup(req, res) {333
 
     if (password.length < 6) {
       return res.status(400).json({ message: "Password must be at least 6 characters" });
+    }
+
+    let selectedCharityId = null;
+    let selectedCharityPercent = 10;
+
+    if (!isAdminSignup) {
+      selectedCharityId = Number(charity_id);
+      selectedCharityPercent = Number(charity_percent ?? 10);
+
+      if (!Number.isInteger(selectedCharityId) || selectedCharityId <= 0) {
+        return res.status(400).json({ message: "charity_id is required at signup" });
+      }
+
+      if (!Number.isFinite(selectedCharityPercent) || selectedCharityPercent < 10 || selectedCharityPercent > 100) {
+        return res.status(400).json({ message: "charity_percent must be between 10 and 100" });
+      }
+
+      const { data: charity, error: charityError } = await from("charities")
+        .select("id")
+        .eq("id", selectedCharityId)
+        .maybeSingle();
+
+      if (charityError) {
+        return res.status(500).json({ message: "Failed to validate charity", error: charityError.message });
+      }
+
+      if (!charity) {
+        return res.status(404).json({ message: "Selected charity not found" });
+      }
     }
 
     const { data: existingUser, error: findError } = await from("users")
@@ -55,8 +86,10 @@ async function signup(req, res) {333
         email: normalizedEmail,
         password: hashedPassword,
         is_subscribed: false,
+        charity_id: selectedCharityId,
+        charity_percent: Number(selectedCharityPercent.toFixed(2)),
       })
-      .select("id, email, is_subscribed, charity_id")
+      .select("id, email, is_subscribed, charity_id, charity_percent")
       .single();
 
     if (createError) {
@@ -126,7 +159,7 @@ async function login(req, res) {
     }
 
     const { data: user, error: userError } = await from("users")
-      .select("id, email, password, is_subscribed, charity_id")
+      .select("id, email, password, is_subscribed, charity_id, charity_percent")
       .eq("email", normalizedEmail)
       .maybeSingle();
 
@@ -154,6 +187,7 @@ async function login(req, res) {
         email: user.email,
         is_subscribed: user.is_subscribed,
         charity_id: user.charity_id,
+        charity_percent: user.charity_percent,
       },
     });
   } catch (error) {

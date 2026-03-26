@@ -5,6 +5,11 @@ export const subscribeUser = async () => {
   return response.data
 }
 
+export const updateMyProfile = async (payload) => {
+  const response = await api.patch('/api/user/me', payload)
+  return response.data
+}
+
 export const selectCharity = async (charityId) => {
   const response = await api.post('/api/user/select-charity', { charity_id: Number(charityId) })
   return response.data

@@ -11,6 +11,7 @@ import CharityPage from './pages/CharityPage'
 import DashboardPage from './pages/DashboardPage'
 import LoginPage from './pages/LoginPage'
 import PricingPage from './pages/PricingPage'
+import ProfilePage from './pages/ProfilePage'
 import PublicCharityProfilePage from './pages/PublicCharityProfilePage'
 import PublicHomePage from './pages/PublicHomePage'
 import ScoresPage from './pages/ScoresPage'
@@ -35,6 +36,7 @@ function App() {
       <Route element={<PrivateRoute />}>
         <Route element={<AppLayout />}>
           <Route path="/dashboard" element={<DashboardPage />} />
+          <Route path="/profile" element={<ProfilePage />} />
           <Route path="/scores" element={<ScoresPage />} />
           <Route path="/charity" element={<CharityPage />} />
         </Route>

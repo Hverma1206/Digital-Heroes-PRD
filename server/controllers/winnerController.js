@@ -1,5 +1,56 @@
 import { from } from "../supabaseClient.js";
 
+function getNextMonthIsoDate(baseDate = new Date()) {
+  const year = baseDate.getUTCFullYear();
+  const month = baseDate.getUTCMonth();
+  return new Date(Date.UTC(year, month + 1, 1, 0, 0, 0)).toISOString();
+}
+
+function getUpcomingDrawDate(latestPublishedDraw) {
+  const drawYear = Number(latestPublishedDraw?.draw_year);
+  const drawMonth = Number(latestPublishedDraw?.draw_month);
+
+  if (Number.isInteger(drawYear) && Number.isInteger(drawMonth) && drawMonth >= 1 && drawMonth <= 12) {
+    return new Date(Date.UTC(drawYear, drawMonth, 1, 0, 0, 0)).toISOString();
+  }
+
+  return getNextMonthIsoDate();
+}
+
+async function getDrawsEnteredCount(userId) {
+  const { data: latestSubscription, error: subscriptionError } = await from("user_subscriptions")
+    .select("id, status, started_at, ended_at")
+    .eq("user_id", userId)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (subscriptionError) {
+    throw new Error(`Failed to load subscription participation window: ${subscriptionError.message}`);
+  }
+
+  if (!latestSubscription?.started_at) {
+    return 0;
+  }
+
+  let query = from("draws")
+    .select("id", { count: "exact", head: true })
+    .eq("status", "published")
+    .gte("published_at", latestSubscription.started_at);
+
+  if (latestSubscription.ended_at) {
+    query = query.lte("published_at", latestSubscription.ended_at);
+  }
+
+  const { count, error: drawCountError } = await query;
+
+  if (drawCountError) {
+    throw new Error(`Failed to load draws entered: ${drawCountError.message}`);
+  }
+
+  return Number(count || 0);
+}
+
 async function getUserWinnerResult(req, res) {
   try {
     const { data: latestDraw, error: drawError } = await from("draws")
@@ -12,27 +63,61 @@ async function getUserWinnerResult(req, res) {
       return res.status(500).json({ message: "Failed to fetch latest draw", error: drawError.message });
     }
 
-    if (!latestDraw) {
-      return res.status(200).json({
-        result: null,
-        draw: null,
-        message: "No draw found yet",
-      });
-    }
-
-    const { data: winner, error: winnerError } = await from("winners")
-      .select("id, user_id, draw_id, match_count, payout_amount, payout_status, verification_status, proof_url, created_at")
-      .eq("draw_id", latestDraw.id)
-      .eq("user_id", req.user.id)
+    const { data: latestPublishedDraw, error: latestPublishedError } = await from("draws")
+      .select("id, draw_month, draw_year, published_at")
+      .eq("status", "published")
+      .order("published_at", { ascending: false })
+      .limit(1)
       .maybeSingle();
 
-    if (winnerError) {
-      return res.status(500).json({ message: "Failed to fetch winner result", error: winnerError.message });
+    if (latestPublishedError) {
+      return res.status(500).json({ message: "Failed to fetch latest published draw", error: latestPublishedError.message });
     }
+
+    let winner = null;
+    if (latestDraw?.id) {
+      const winnerResponse = await from("winners")
+        .select("id, user_id, draw_id, match_count, payout_amount, payout_status, verification_status, proof_url, created_at")
+        .eq("draw_id", latestDraw.id)
+        .eq("user_id", req.user.id)
+        .maybeSingle();
+
+      if (winnerResponse.error) {
+        return res.status(500).json({ message: "Failed to fetch winner result", error: winnerResponse.error.message });
+      }
+
+      winner = winnerResponse.data;
+    }
+
+    const { data: allUserWinnings, error: allWinningsError } = await from("winners")
+      .select("payout_amount, payout_status")
+      .eq("user_id", req.user.id)
+      .order("created_at", { ascending: false });
+
+    if (allWinningsError) {
+      return res.status(500).json({ message: "Failed to fetch user winnings", error: allWinningsError.message });
+    }
+
+    const totalWinnings = Number(
+      (allUserWinnings ?? []).reduce((sum, row) => sum + Number(row.payout_amount || 0), 0).toFixed(2)
+    );
+    const paymentStatus =
+      (allUserWinnings ?? []).find((row) => String(row.payout_status || "").toLowerCase() === "pending")?.payout_status ||
+      (allUserWinnings ?? [])[0]?.payout_status ||
+      "none";
+    const drawsEntered = await getDrawsEnteredCount(req.user.id);
+    const upcomingDrawAt = getUpcomingDrawDate(latestPublishedDraw);
 
     return res.status(200).json({
       result: winner ?? null,
-      draw: latestDraw,
+      draw: latestDraw ?? null,
+      summary: {
+        total_winnings: totalWinnings,
+        payment_status: paymentStatus,
+        draws_entered: drawsEntered,
+        upcoming_draw_at: upcomingDrawAt,
+      },
+      message: latestDraw ? undefined : "No draw found yet",
     });
   } catch (error) {
     return res.status(500).json({ message: "Internal server error", error: error.message });

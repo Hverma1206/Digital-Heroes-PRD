@@ -7,6 +7,17 @@ const TIER_SPLITS = {
   3: 0.25,
 };
 
+function getPrizePoolPortionRate() {
+  const rawPercent = Number(process.env.PRIZE_POOL_PORTION_PERCENT ?? 100);
+
+  if (!Number.isFinite(rawPercent)) {
+    return 1;
+  }
+
+  const boundedPercent = Math.min(100, Math.max(0, rawPercent));
+  return boundedPercent / 100;
+}
+
 function toMonthYear(inputMonth, inputYear) {
   const now = new Date();
   const month = Number.isInteger(Number(inputMonth)) ? Number(inputMonth) : now.getMonth() + 1;
@@ -203,9 +214,14 @@ async function getActiveSubscriptionRevenueSnapshot() {
     0
   );
 
+  const prizePoolPortionRate = getPrizePoolPortionRate();
+  const prizePoolRevenue = Number((totalRevenue * prizePoolPortionRate).toFixed(2));
+
   return {
     activeSubscriberCount: (activeSubscriptions ?? []).length,
     totalRevenue,
+    prizePoolRevenue,
+    prizePoolPortionRate,
   };
 }
 
@@ -305,7 +321,7 @@ async function createPublishedDraw({ simulationDrawId = null, month, year, mode 
     getCurrentRollover(),
   ]);
 
-  const pools = buildPoolSnapshot(revenueSnapshot.totalRevenue, rolloverIn);
+  const pools = buildPoolSnapshot(revenueSnapshot.prizePoolRevenue, rolloverIn);
   const groupedWinners = groupWinnersByMatch(winnerRows);
 
   const tier3WinnersCount = (groupedWinners[3] ?? []).length;
@@ -326,7 +342,7 @@ async function createPublishedDraw({ simulationDrawId = null, month, year, mode 
       draw_year: drawYear,
       active_subscribers_snapshot: revenueSnapshot.activeSubscriberCount,
       subscription_revenue_snapshot: revenueSnapshot.totalRevenue,
-      prize_pool_total: revenueSnapshot.totalRevenue,
+      prize_pool_total: revenueSnapshot.prizePoolRevenue,
       tier_3_pool: pools.tier3Pool,
       tier_4_pool: pools.tier4Pool,
       tier_5_pool: pools.tier5Pool,
@@ -392,7 +408,7 @@ async function simulateDraw(req, res) {
       getCurrentRollover(),
     ]);
 
-    const pools = buildPoolSnapshot(revenueSnapshot.totalRevenue, rolloverIn);
+    const pools = buildPoolSnapshot(revenueSnapshot.prizePoolRevenue, rolloverIn);
 
     const { data: simulationDraw, error: drawError } = await from("draws")
       .insert({
@@ -403,7 +419,7 @@ async function simulateDraw(req, res) {
         draw_year: drawYear,
         active_subscribers_snapshot: revenueSnapshot.activeSubscriberCount,
         subscription_revenue_snapshot: revenueSnapshot.totalRevenue,
-        prize_pool_total: revenueSnapshot.totalRevenue,
+        prize_pool_total: revenueSnapshot.prizePoolRevenue,
         tier_3_pool: pools.tier3Pool,
         tier_4_pool: pools.tier4Pool,
         tier_5_pool: pools.tier5Pool,

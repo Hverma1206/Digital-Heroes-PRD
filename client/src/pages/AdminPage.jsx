@@ -45,6 +45,23 @@ function normalizeWinners(input) {
   return []
 }
 
+function getFriendlyErrorMessage(err, fallbackMessage) {
+  const apiError = String(err?.response?.data?.error || '').trim()
+  const apiMessage = String(err?.response?.data?.message || '').trim()
+  const localMessage = String(err?.message || '').trim()
+  const raw = apiError || apiMessage || localMessage
+
+  if (raw.includes('A published draw already exists for this month')) {
+    return 'One published draw per month'
+  }
+
+  if (raw.includes('Admin access required')) {
+    return 'You must login with an admin account to access this action.'
+  }
+
+  return raw || fallbackMessage
+}
+
 function AdminPage() {
   const { addToast } = useToast()
 
@@ -85,8 +102,15 @@ function AdminPage() {
   const [publishing, setPublishing] = useState(false)
   const [simulationResult, setSimulationResult] = useState(null)
   const [actionWinnerId, setActionWinnerId] = useState(null)
+  const [uiError, setUiError] = useState('')
 
   const groupedWinners = useMemo(() => winnerGroups(winners), [winners])
+
+  const handleUiError = useCallback((err, fallbackMessage) => {
+    const message = getFriendlyErrorMessage(err, fallbackMessage)
+    setUiError(message)
+    addToast(message, 'error')
+  }, [addToast])
 
   const loadLatest = useCallback(async () => {
     const payload = await getLatestDraw()
@@ -133,13 +157,14 @@ function AdminPage() {
   const bootstrap = useCallback(async () => {
     setLoading(true)
     try {
+      setUiError('')
       await Promise.all([loadLatest(), loadAdminModules()])
     } catch (err) {
-      addToast(err?.response?.data?.message || 'Unable to load admin data.', 'error')
+      handleUiError(err, 'Unable to load admin data.')
     } finally {
       setLoading(false)
     }
-  }, [addToast, loadAdminModules, loadLatest])
+  }, [handleUiError, loadAdminModules, loadLatest])
 
   useEffect(() => {
     bootstrap()
@@ -152,9 +177,10 @@ function AdminPage() {
       const numbers = parseDrawNumbers(drawNumbersInput)
       await runDraw({ mode: drawMode, numbers })
       await bootstrap()
+      setUiError('')
       addToast('Draw published successfully.', 'success')
     } catch (err) {
-      addToast(err?.response?.data?.message || 'Unable to run draw.', 'error')
+      handleUiError(err, 'Unable to run draw.')
     } finally {
       setRunningDraw(false)
     }
@@ -167,9 +193,10 @@ function AdminPage() {
       const numbers = parseDrawNumbers(drawNumbersInput)
       const payload = await simulateDraw({ mode: drawMode, numbers })
       setSimulationResult(payload)
+      setUiError('')
       addToast('Simulation completed. Review and publish.', 'success')
     } catch (err) {
-      addToast(err?.response?.data?.message || 'Unable to simulate draw.', 'error')
+      handleUiError(err, 'Unable to simulate draw.')
     } finally {
       setSimulating(false)
     }
@@ -188,9 +215,10 @@ function AdminPage() {
       await publishDraw({ simulationDrawId: simulationId, mode: drawMode })
       setSimulationResult(null)
       await bootstrap()
+      setUiError('')
       addToast('Simulation published successfully.', 'success')
     } catch (err) {
-      addToast(err?.response?.data?.message || 'Unable to publish simulation draw.', 'error')
+      handleUiError(err, 'Unable to publish simulation draw.')
     } finally {
       setPublishing(false)
     }
@@ -202,9 +230,10 @@ function AdminPage() {
     try {
       await verifyWinner(winnerId, action)
       await bootstrap()
+      setUiError('')
       addToast(`Winner ${action === 'approve' ? 'approved' : 'rejected'}.`, 'success')
     } catch (err) {
-      addToast(err?.response?.data?.message || 'Unable to verify winner.', 'error')
+      handleUiError(err, 'Unable to verify winner.')
     } finally {
       setActionWinnerId(null)
     }
@@ -216,9 +245,10 @@ function AdminPage() {
     try {
       await markWinnerPaid(winnerId)
       await bootstrap()
+      setUiError('')
       addToast('Winner payout marked paid.', 'success')
     } catch (err) {
-      addToast(err?.response?.data?.message || 'Unable to update payout.', 'error')
+      handleUiError(err, 'Unable to update payout.')
     } finally {
       setActionWinnerId(null)
     }
@@ -228,9 +258,10 @@ function AdminPage() {
     try {
       await updateAdminSubscription(subscriptionId, { status: 'canceled', ended_at: new Date().toISOString() })
       await bootstrap()
+      setUiError('')
       addToast('Subscription updated.', 'success')
     } catch (err) {
-      addToast(err?.response?.data?.message || 'Unable to update subscription.', 'error')
+      handleUiError(err, 'Unable to update subscription.')
     }
   }
 
@@ -254,9 +285,10 @@ function AdminPage() {
       })
       setEditingUserId(null)
       await bootstrap()
+      setUiError('')
       addToast('User updated.', 'success')
     } catch (err) {
-      addToast(err?.response?.data?.message || 'Unable to update user.', 'error')
+      handleUiError(err, 'Unable to update user.')
     }
   }
 
@@ -278,9 +310,10 @@ function AdminPage() {
       })
       setEditingScoreId(null)
       await bootstrap()
+      setUiError('')
       addToast('Score updated.', 'success')
     } catch (err) {
-      addToast(err?.response?.data?.message || 'Unable to update score.', 'error')
+      handleUiError(err, 'Unable to update score.')
     }
   }
 
@@ -314,9 +347,10 @@ function AdminPage() {
         upcoming_event_date: '',
       })
       await bootstrap()
+      setUiError('')
       addToast('Charity created.', 'success')
     } catch (err) {
-      addToast(err?.response?.data?.message || 'Unable to create charity.', 'error')
+      handleUiError(err, 'Unable to create charity.')
     }
   }
 
@@ -324,9 +358,10 @@ function AdminPage() {
     try {
       await deleteCharity(charityId)
       await bootstrap()
+      setUiError('')
       addToast('Charity deleted.', 'success')
     } catch (err) {
-      addToast(err?.response?.data?.message || 'Unable to delete charity.', 'error')
+      handleUiError(err, 'Unable to delete charity.')
     }
   }
 
@@ -362,9 +397,10 @@ function AdminPage() {
       })
       setEditingCharityId(null)
       await bootstrap()
+      setUiError('')
       addToast('Charity updated.', 'success')
     } catch (err) {
-      addToast(err?.response?.data?.message || 'Unable to update charity.', 'error')
+      handleUiError(err, 'Unable to update charity.')
     }
   }
 
@@ -405,15 +441,20 @@ function AdminPage() {
         </div>
       </div>
 
+      {uiError && (
+        <p className="rounded-xl border border-rose-200 bg-rose-50 px-4 py-3 text-sm text-rose-700">{uiError}</p>
+      )}
+
       {loading && <p className="text-sm text-slate-500">Loading admin dashboard...</p>}
 
       {reports && (
-        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-8">
+        <div className="grid gap-3 md:grid-cols-3 xl:grid-cols-9">
           <article className="panel p-3"><p className="text-xs text-slate-500">Users</p><p className="text-lg font-semibold">{reports.totalUsers}</p></article>
           <article className="panel p-3"><p className="text-xs text-slate-500">Subscribers</p><p className="text-lg font-semibold">{reports.activeSubscribers}</p></article>
           <article className="panel p-3"><p className="text-xs text-slate-500">Charities</p><p className="text-lg font-semibold">{reports.totalCharities}</p></article>
           <article className="panel p-3"><p className="text-xs text-slate-500">Draws</p><p className="text-lg font-semibold">{reports.totalDraws}</p></article>
           <article className="panel p-3"><p className="text-xs text-slate-500">Revenue (INR)</p><p className="text-lg font-semibold">{reports.totalRevenue}</p></article>
+          <article className="panel p-3"><p className="text-xs text-slate-500">Prize Pool (INR)</p><p className="text-lg font-semibold">{reports.totalPrizePool ?? 0}</p></article>
           <article className="panel p-3"><p className="text-xs text-slate-500">Charity Share (INR)</p><p className="text-lg font-semibold">{reports.totalCharityContribution ?? 0}</p></article>
           <article className="panel p-3"><p className="text-xs text-slate-500">Donations (INR)</p><p className="text-lg font-semibold">{reports.totalDonations ?? 0}</p></article>
           <article className="panel p-3"><p className="text-xs text-slate-500">Rollover (INR)</p><p className="text-lg font-semibold">{reports.totalRolloverOutstanding}</p></article>
@@ -506,7 +547,7 @@ function AdminPage() {
       <article className="panel p-4">
         <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">Subscriptions Management</p>
         <div className="mt-3 space-y-2">
-          {subscriptions.slice(0, 12).map((subscription) => (
+          {subscriptions.map((subscription) => (
             <div key={subscription.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
               <p className="text-sm text-slate-700">
                 {subscription.user_email || `User #${subscription.user_id}`} • {subscription.plan_name || subscription.plan_code || `Plan #${subscription.plan_id}`} • {subscription.status}
@@ -523,7 +564,7 @@ function AdminPage() {
       <article className="panel p-4">
         <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">User Management</p>
         <div className="mt-3 space-y-2">
-          {users.slice(0, 30).map((user) => {
+          {users.map((user) => {
             const isEditing = editingUserId === user.id
             return (
               <div key={user.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -571,7 +612,7 @@ function AdminPage() {
       <article className="panel p-4">
         <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">Edit Golf Scores</p>
         <div className="mt-3 space-y-2">
-          {scores.slice(0, 40).map((score) => {
+          {scores.map((score) => {
             const isEditing = editingScoreId === score.id
             return (
               <div key={score.id} className="rounded-xl border border-slate-200 bg-slate-50 p-3">

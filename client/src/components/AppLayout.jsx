@@ -3,6 +3,7 @@ import { useAuth } from '../context/AuthContext'
 
 const links = [
   { to: '/dashboard', label: 'Dashboard' },
+  { to: '/profile', label: 'Profile' },
   { to: '/scores', label: 'Scores' },
   { to: '/charity', label: 'Charity' },
   { to: '/admin', label: 'Admin' },
@@ -12,7 +13,9 @@ function AppLayout() {
   const { user, logout } = useAuth()
   const adminEmail = (import.meta.env.VITE_ADMIN_EMAIL || 'admin@golf.com').toLowerCase()
   const isAdminUser = String(user?.email || '').toLowerCase() === adminEmail
-  const navLinks = links.filter((link) => (link.to === '/admin' ? isAdminUser : true))
+  const navLinks = isAdminUser
+    ? links.filter((link) => link.to === '/admin')
+    : links.filter((link) => link.to !== '/admin')
 
   return (
     <div className="min-h-screen bg-slate-100 p-2 sm:p-4">

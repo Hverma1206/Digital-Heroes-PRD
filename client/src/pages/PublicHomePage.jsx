@@ -85,7 +85,7 @@ function PublicHomePage() {
         {loading ? (
           <p className="text-sm text-slate-400">Loading charities...</p>
         ) : charities.length === 0 ? (
-          <p className="rounded-2xl border border-slate-800 bg-slate-900 p-4 text-sm text-slate-300">No charities added yet.</p>
+          <p className="rounded-2xl border border-slacompte-800 bg-slate-900 p-4 text-sm text-slate-300">No charities added yet.</p>
         ) : (
           <div className="grid gap-4 md:grid-cols-3">
             {charities.slice(0, 6).map((charity) => (

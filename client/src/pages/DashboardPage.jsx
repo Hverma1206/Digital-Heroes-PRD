@@ -4,6 +4,7 @@ import { useAuth } from '../context/AuthContext'
 import { useToast } from '../context/ToastContext'
 import { getLatestDraw } from '../services/drawService'
 import { addScore, getScores } from '../services/scoreService'
+import { getSubscriptionStatus } from '../services/subscriptionService'
 import { getUserWinnerResult, submitWinnerProof, uploadWinnerProofFile } from '../services/winnerService'
 import {
   findWinnerForUser,
@@ -25,6 +26,8 @@ function DashboardPage() {
   const [scores, setScores] = useState([])
   const [latestDraw, setLatestDraw] = useState(null)
   const [winnerResult, setWinnerResult] = useState(null)
+  const [dashboardSummary, setDashboardSummary] = useState(null)
+  const [subscriptionStatus, setSubscriptionStatus] = useState(null)
   const [loading, setLoading] = useState(true)
   const [submittingScore, setSubmittingScore] = useState(false)
   const [proofUrl, setProofUrl] = useState('')
@@ -37,10 +40,11 @@ function DashboardPage() {
     setError('')
 
     try {
-      const [scoresResult, drawResult, winnerResultPayload] = await Promise.allSettled([
+      const [scoresResult, drawResult, winnerResultPayload, subscriptionResult] = await Promise.allSettled([
         getScores(),
         getLatestDraw(),
         getUserWinnerResult(),
+        getSubscriptionStatus(),
       ])
 
       if (scoresResult.status === 'fulfilled') {
@@ -56,8 +60,16 @@ function DashboardPage() {
       if (winnerResultPayload.status === 'fulfilled') {
         const winnerPayload = winnerResultPayload.value
         setWinnerResult(winnerPayload?.winner ?? winnerPayload?.result ?? winnerPayload?.data ?? winnerPayload)
+        setDashboardSummary(winnerPayload?.summary ?? null)
       } else {
         setWinnerResult(findWinnerForUser(drawPayload?.winners ?? drawPayload, user?.id))
+        setDashboardSummary(null)
+      }
+
+      if (subscriptionResult.status === 'fulfilled') {
+        setSubscriptionStatus(subscriptionResult.value?.subscription ?? null)
+      } else {
+        setSubscriptionStatus(null)
       }
 
       if (scoresResult.status === 'rejected' && drawResult.status === 'rejected') {
@@ -74,6 +86,11 @@ function DashboardPage() {
 
   const selectedCharity = useMemo(() => selectedCharityFromUser(user), [user])
   const isSubscribed = isUserSubscribed(user)
+  const renewalAt = subscriptionStatus?.renewal_at ? formatDateTime(subscriptionStatus.renewal_at) : 'Not available'
+  const drawsEntered = Number(dashboardSummary?.draws_entered || 0)
+  const upcomingDrawAt = dashboardSummary?.upcoming_draw_at ? formatDateTime(dashboardSummary.upcoming_draw_at) : 'Not available'
+  const totalWinnings = Number(dashboardSummary?.total_winnings || 0)
+  const paymentStatus = String(dashboardSummary?.payment_status || 'none')
 
   const handleSubscribe = () => {
     navigate('/pricing')
@@ -156,6 +173,7 @@ function DashboardPage() {
           <p className={`mt-2 text-lg font-semibold ${isSubscribed ? 'text-emerald-700' : 'text-amber-700'}`}>
             {isSubscribed ? 'Active' : 'Inactive'}
           </p>
+          <p className="mt-1 text-xs text-slate-500">Renewal: {renewalAt}</p>
           <button className="btn btn-primary mt-4" onClick={handleSubscribe} disabled={isSubscribed}>
             {isSubscribed ? 'Subscribed' : 'View Plans'}
           </button>
@@ -187,6 +205,18 @@ function DashboardPage() {
           ) : (
             <p className="mt-2 text-sm text-slate-500">No draw result yet.</p>
           )}
+        </article>
+
+        <article className="panel p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">Participation Summary</p>
+          <p className="mt-2 text-lg font-semibold text-slate-900">Draws Entered: {drawsEntered}</p>
+          <p className="mt-1 text-xs text-slate-500">Upcoming Draw: {upcomingDrawAt}</p>
+        </article>
+
+        <article className="panel p-4">
+          <p className="text-xs font-semibold uppercase tracking-[0.15em] text-slate-500">Winnings</p>
+          <p className="mt-2 text-lg font-semibold text-slate-900">Total Won: INR {totalWinnings.toFixed(2)}</p>
+          <p className="mt-1 text-xs text-slate-500">Payment Status: {paymentStatus}</p>
         </article>
       </div>
 
